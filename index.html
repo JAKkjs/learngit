@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>资本帝国：工业大亨终极版</title>
+    <style>
+        body {
+            background-color: #1e272e; color: #d2dae2; font-family: 'Segoe UI', sans-serif;
+            margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; user-select: none;
+        }
+        #game-wrapper { display: flex; gap: 20px; align-items: flex-start; }
+        canvas {
+            background-color: #4cd137; border-radius: 12px; box-shadow: inset 0 0 50px rgba(0,0,0,0.3), 0 10px 30px rgba(0,0,0,0.5);
+            cursor: crosshair; image-rendering: pixelated;
+        }
+        .panel {
+            background-color: #2f3640; padding: 15px; border-radius: 12px;
+            width: 320px; box-sizing: border-box; max-height: 800px; overflow-y: auto;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+        }
+        h2, h3 { margin: 5px 0 15px 0; border-bottom: 2px solid #718093; padding-bottom: 5px; font-size: 1.1em; color: #f5f6fa;}
+        .stat { display: flex; justify-content: space-between; margin: 8px 0; font-size: 0.95em; font-weight: 500;}
+        .val { color: #fbc531; font-weight: bold; font-family: monospace; font-size: 1.1em;}
+        button {
+            background-color: #0097e6; color: white; border: none; padding: 10px;
+            border-radius: 6px; cursor: pointer; margin: 4px 0; width: 100%; transition: 0.2s; font-size: 0.9em; font-weight: bold;
+        }
+        button:hover:not(:disabled) { background-color: #00a8ff; transform: translateY(-1px); }
+        button:disabled { background-color: #576574; cursor: not-allowed; opacity: 0.6; }
+        .b-bld { background-color: #44bd32; } .b-bld:hover:not(:disabled) { background-color: #4cd137; }
+        .b-tech { background-color: #8c7ae6; } .b-tech:hover:not(:disabled) { background-color: #9c88ff; }
+        .b-sys { background-color: #c23616; } .b-sys:hover:not(:disabled) { background-color: #e84118; }
+        
+        .role-row { display: flex; justify-content: space-between; align-items: center; margin: 6px 0; background: #353b48; padding: 6px; border-radius: 6px;}
+        .role-row button { width: 35px; margin: 0; padding: 5px; background: #e1b12c; color: #2f3640;}
+        .role-row span { font-size: 0.9em; }
+        
+        #msg-box { 
+            background: #2f3640; color: #fbc531; padding: 12px; width: 1150px; 
+            text-align: center; border-radius: 8px; margin-bottom: 15px; font-weight: bold; font-size: 1.1em;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3); border-left: 5px solid #fbc531;
+        }
+        /* 滚动条美化 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #2f3640; }
+        ::-webkit-scrollbar-thumb { background: #718093; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <h1 style="margin: 5px 0; font-size: 1.8em; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">🏭 工业巨头：从木匠到垄断帝国</h1>
+    <div id="msg-box">欢迎来到资本市场！建立基础林场，并留意每周的发薪日！</div>
+    
+    <div id="game-wrapper">
+        <!-- 左侧面板：资金、员工与岗位 -->
+        <div class="panel">
+            <h2>📊 公司报表</h2>
+            <div class="stat"><span>💰 集团资金:</span> <span class="val" id="ui-money">$1000</span></div>
+            <div class="stat"><span>📆 距离发薪日:</span> <span class="val" id="ui-payday" style="color:#e84118;">0s</span></div>
+            <div class="stat"><span>👥 员工(闲置/总/上限):</span> <span class="val" id="ui-workers" style="color:#00a8ff;">0/0/0</span></div>
+            <button onclick="game.hireWorker()" id="btn-hire">🤝 招募新员工 ($200)</button>
+            <p style="font-size:0.75em; color:#7f8fa6;">* 每名员工每天(60秒)需发薪$20。不发工资会罢工！</p>
+
+            <h3 style="margin-top: 20px;">💼 部门主管 (分配岗位)</h3>
+            <div id="role-container">
+                <!-- 岗位动态生成 -->
+            </div>
+            
+            <h3 style="margin-top: 20px;">🔬 集团科技部</h3>
+            <button class="b-tech" id="tech-speed" onclick="game.buyTech('speed')">👟 传送履带 ($1500) - 移速+50%</button>
+            <button class="b-tech" id="tech-cap" onclick="game.buyTech('cap')">🛒 叉车驾驶 ($4000) - 搬运量翻倍</button>
+            <button class="b-tech" id="tech-auto" onclick="game.buyTech('auto')">🤖 资本永动 ($8000) - 矿林自动重建</button>
+        </div>
+
+        <!-- 游戏画布 (扩大尺寸 1000x800) -->
+        <canvas id="gameCanvas" width="1000" height="800"></canvas>
+
+        <!-- 右侧面板：建设与经济 -->
+        <div class="panel">
+            <h2>🏗️ 基础设施 (点击放置)</h2>
+            <button class="b-bld" onclick="game.enterBuildMode('FOREST')">🌲 林场 ($100)</button>
+            <button class="b-bld" onclick="game.enterBuildMode('QUARRY')">🪨 采石场 ($300)</button>
+            <button class="b-bld" onclick="game.enterBuildMode('MINE')">⛰️ 铁矿山 ($800)</button>
+            <button class="b-bld" onclick="game.enterBuildMode('WAREHOUSE')">📦 大型仓库 ($300)</button>
+            <button class="b-bld" onclick="game.enterBuildMode('DORM')">💤 员工宿舍 ($200)</button>
+            <button class="b-bld" onclick="game.enterBuildMode('CANTEEN')">🍔 员工食堂 ($200)</button>
+            
+            <h2 style="margin-top: 20px;">🏭 工业加工区</h2>
+            <button class="b-bld" onclick="game.enterBuildMode('SAWMILL')">🪚 锯木厂 ($400)</button>
+            <button class="b-bld" onclick="game.enterBuildMode('SMELTER')">🔥 炼铁熔炉 ($1200)</button>
+            <button class="b-bld" onclick="game.enterBuildMode('TOOL_FACTORY')">🔧 工具厂 ($2500)</button>
+            <button class="b-bld" onclick="game.enterBuildMode('WORKSHOP')">🔨 普通家具厂 ($800)</button>
+            <button class="b-bld" onclick="game.enterBuildMode('LUX_WORKSHOP')">💎 奢侈品工坊 ($5000)</button>
+            <button class="b-bld" onclick="game.enterBuildMode('TRUCK')">🚚 贸易货车 ($500)</button>
+
+            <h2 style="margin-top: 20px;">👑 终极目标</h2>
+            <button style="background-color:#fbc531; color:#2f3640;" onclick="game.buyWin()">🏛️ 建立跨国总部 ($200,000)</button>
+            <button onclick="game.cancelBuild()" style="background-color:#718093; margin-top:10px;">❌ 取消建造</button>
+
+            <h3 style="margin-top: 20px;">💾 系统与数据</h3>
+            <button class="b-sys" onclick="game.saveGame()">💾 手动保存档案</button>
+            <button class="b-sys" onclick="game.loadGame()" style="background-color:#dcdde1; color:#2f3640;">📂 读取档案</button>
+            <button class="b-sys" onclick="game.resetGame()" style="background-color:#2f3640; border:1px solid #e84118;">⚠️ 破产清算(重开)</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const msgBox = document.getElementById('msg-box');
+
+        // === 核心数据词典 ===
+        const RES = {
+            wood: { name: '原木', emoji: '🪵', price: 5 },
+            stone: { name: '石块', emoji: '🪨', price: 10 },
+            iron: { name: '铁矿石', emoji: '🪨', price: 20 },
+            plank: { name: '木板', emoji: '🪧', price: 25 },
+            ingot: { name: '铁锭', emoji: '🔩', price: 80 },
+            tools: { name: '工具', emoji: '🔧', price: 150 },
+            furniture: { name: '家具', emoji: '🪑', price: 60 },
+            luxury: { name: '高定家具', emoji: '💎', price: 400 }
+        };
+
+        const BLD_DATA = {
+            FOREST:   { w: 90, h: 90, color: '#009432', roof: '#006266', name: '林场', icon: '🌲', cost: 100, cap: 30 },
+            QUARRY:   { w: 100, h: 100, color: '#7f8fa6', roof: '#353b48', name: '采石场', icon: '⛏️', cost: 300, cap: 50 },
+            MINE:     { w: 110, h: 110, color: '#2f3640', roof: '#192a56', name: '铁矿山', icon: '⛰️', cost: 800, cap: 80 },
+            WAREHOUSE:{ w: 140, h: 100, color: '#e1b12c', roof: '#dcdde1', name: '仓库', icon: '📦', cost: 300 },
+            DORM:     { w: 120, h: 80,  color: '#00a8ff', roof: '#0097e6', name: '宿舍', icon: '💤', cost: 200 },
+            CANTEEN:  { w: 100, h: 80,  color: '#e84118', roof: '#c23616', name: '食堂', icon: '🍔', cost: 200 },
+            SAWMILL:  { w: 120, h: 90,  color: '#8c7ae6', roof: '#9c88ff', name: '锯木厂', icon: '🪚', cost: 400, smoke: true },
+            SMELTER:  { w: 120, h: 100, color: '#c23616', roof: '#2f3640', name: '炼铁炉', icon: '🔥', cost: 1200, smoke: true },
+            WORKSHOP: { w: 120, h: 90,  color: '#d35400', roof: '#e67e22', name: '家具厂', icon: '🔨', cost: 800 },
+            TOOL_FACTORY: { w: 130, h: 100, color: '#487eb0', roof: '#273c75', name: '工具厂', icon: '⚙️', cost: 2500, smoke: true },
+            LUX_WORKSHOP: { w: 140, h: 110, color: '#e84393', roof: '#6c5ce7', name: '奢侈工坊', icon: '💎', cost: 5000 },
+            TRUCK:    { w: 150, h: 80,  color: '#353b48', roof: '#2f3640', name: '货车(点我卖)', icon: '🚚', cost: 500 }
+        };
+
+        // 角色配方映射表 (定义每种工人的原材料、产物、所需建筑、耗时)
+        const ROLES = {
+            LUMBERJACK: { name: '伐木工', icon: '🪓', reqBld: 'FOREST', out: 'wood', time: 100 },
+            MINER_STONE:{ name: '采石工', icon: '⛏️', reqBld: 'QUARRY', out: 'stone', time: 150 },
+            MINER_IRON: { name: '采铁工', icon: '⛰️', reqBld: 'MINE',   out: 'iron', time: 200 },
+            SAWYER:     { name: '锯木工', icon: '🪚', reqBld: 'SAWMILL', in: ['wood'], out: 'plank', time: 180 },
+            SMELTER:    { name: '冶炼工', icon: '🔥', reqBld: 'SMELTER', in: ['iron', 'stone'], out: 'ingot', time: 300 },
+            BLACKSMITH: { name: '铁匠',   icon: '⚙️', reqBld: 'TOOL_FACTORY', in: ['ingot', 'plank'], out: 'tools', time: 400 },
+            CARPENTER:  { name: '木匠',   icon: '🔨', reqBld: 'WORKSHOP', in: ['plank'], out: 'furniture', time: 250 },
+            ARTISAN:    { name: '高定师', icon: '💎', reqBld: 'LUX_WORKSHOP', in: ['furniture', 'tools'], out: 'luxury', time: 500 },
+            SALES:      { name: '售货员', icon: '🛒', reqBld: 'TRUCK', special: 'sales' }
+        };
+
+        // 浮动文字和粒子特效
+        class Effect {
+            constructor(x, y, type, color, text="") {
+                this.x = x; this.y = y; this.type = type; this.color = color; this.text = text;
+                this.life = type === 'text' ? 60 : 30 + Math.random()*20;
+                this.vx = (Math.random()-0.5)*2; this.vy = -1 - Math.random();
+                this.size = type === 'smoke' ? 5 : 3;
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy; this.life--;
+                if(this.type === 'smoke') { this.size += 0.2; this.vy *= 0.95; }
+            }
+            draw(ctx) {
+                ctx.globalAlpha = Math.max(0, this.life / (this.type==='text'?60:50));
+                if (this.type === 'text') {
+                    ctx.fillStyle = this.color; ctx.font = "bold 18px Arial"; ctx.fillText(this.text, this.x, this.y);
+                } else {
+                    ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
+                }
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        class Building {
+            constructor(type, x, y) {
+                this.type = type; this.x = x; this.y = y;
+                let d = BLD_DATA[type];
+                this.w = d.w; this.h = d.h;
+                this.inv = {}; // 库存
+                for(let k in RES) this.inv[k] = 0;
+                this.capacity = d.cap || 0;
+                this.isDestroyed = false;
+                this.workersInside = 0; // 控制冒烟
+            }
+
+            draw(ctx) {
+                let d = BLD_DATA[this.type];
+                
+                // 绘制阴影
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fillRect(this.x + 5, this.y + 5, this.w, this.h);
+
+                // 建筑主体
+                ctx.fillStyle = d.color;
+                ctx.fillRect(this.x, this.y, this.w, this.h);
+                
+                // 2.5D 屋顶 (斜角遮罩)
+                ctx.fillStyle = d.roof;
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x + this.w, this.y);
+                ctx.lineTo(this.x + this.w - 15, this.y + 20);
+                ctx.lineTo(this.x + 15, this.y + 20);
+                ctx.fill();
+
+                // 门/细节
+                ctx.fillStyle = 'rgba(0,0,0,0.4)';
+                ctx.fillRect(this.x + this.w/2 - 15, this.y + this.h - 30, 30, 30);
+
+                ctx.strokeStyle = '#2f3640'; ctx.lineWidth = 2;
+                ctx.strokeRect(this.x, this.y, this.w, this.h);
+
+                // 建筑文字
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(d.icon + " " + d.name, this.x + this.w/2, this.y + 40);
+
+                // 资源点容量显示
+                if (this.capacity > 0) {
+                    ctx.fillStyle = '#fbc531';
+                    ctx.fillText(`剩余: ${this.capacity}`, this.x + this.w/2, this.y + 65);
+                }
+
+                // 工厂冒烟
+                if (d.smoke && this.workersInside > 0 && Math.random() < 0.1) {
+                    game.effects.push(new Effect(this.x + this.w/2, this.y, 'smoke', '#7f8fa6'));
+                    if(this.type === 'SMELTER') game.effects.push(new Effect(this.x + this.w/2, this.y, 'spark', '#e84118'));
+                }
+
+                // 仓库和货车可视化UI增强
+                if (this.type === 'WAREHOUSE' || this.type === 'TRUCK') {
+                    let totalStr = Object.entries(this.inv).filter(([k,v])=>v>0).map(([k,v]) => `${RES[k].emoji}${v}`).join(' ');
+                    ctx.font = '12px Arial';
+                    // 分行绘制
+                    let words = totalStr.split(' ');
+                    let iy = this.y + 60;
+                    for(let i=0; i<words.length; i+=3) {
+                        ctx.fillText(words.slice(i, i+3).join(' '), this.x + this.w/2, iy); iy+=15;
+                    }
+                }
+            }
+        }
+
+        class Worker {
+            constructor(x, y) {
+                this.x = x; this.y = y; this.tx = x; this.ty = y;
+                this.role = 'IDLE'; this.state = 'IDLE'; 
+                this.carrying =[]; // 可能抱有多个材料 [ 'wood', 'stone' ]
+                
+                this.hunger = 100; this.energy = 100;
+                this.timer = 0; this.emoji = '👤';
+                this.targetBld = null; this.destBld = null;
+                this.isStriking = false;
+            }
+
+            setTarget(bld) {
+                this.targetBld = bld;
+                // 到达建筑内随机位置
+                this.tx = bld.x + 15 + Math.random() * (bld.w - 30);
+                this.ty = bld.y + 25 + Math.random() * (bld.h - 40);
+            }
+
+            update() {
+                if (this.isStriking) { this.emoji = '🚫'; return; } // 罢工不干活
+                
+                this.hunger -= 0.008; this.energy -= 0.005;
+                if (this.hunger < 0) this.hunger = 0;
+                if (this.energy < 0) this.energy = 0;
+
+                let spd = 0.8 * (game.tech.speed ? 1.5 : 1.0);
+                if (this.hunger < 20 || this.energy < 20) spd *= 0.5;
+
+                // 需求检查 (空闲时)
+                if (this.state === 'IDLE') {
+                    if (this.hunger < 30 && game.money >= 10) {
+                        let c = game.findNearest(this.x, this.y, 'CANTEEN');
+                        if (c) { this.state = 'GOING_EAT'; this.setTarget(c); }
+                    } else if (this.energy < 25) {
+                        let d = game.findNearest(this.x, this.y, 'DORM');
+                        if (d) { this.state = 'GOING_SLEEP'; this.setTarget(d); }
+                    } else {
+                        this.assignTask();
+                    }
+                }
+
+                // 建筑毁坏校验 (资源挖空)
+                if (this.targetBld && this.targetBld.isDestroyed) {
+                    this.state = 'IDLE'; this.carrying =[]; this.targetBld = null;
+                    if(this.targetBld.workersInside > 0) this.targetBld.workersInside--;
+                }
+
+                this.executeState(spd);
+            }
+
+            moveTo(speed) {
+                let dx = this.tx - this.x; let dy = this.ty - this.y;
+                let dist = Math.hypot(dx, dy);
+                if (dist < speed) { this.x = this.tx; this.y = this.ty; return true; }
+                this.x += (dx / dist) * speed; this.y += (dy / dist) * speed;
+                return false;
+            }
+
+            executeState(speed) {
+                switch (this.state) {
+                    case 'GOING_EAT':
+                        this.emoji = '🏃';
+                        if (this.moveTo(speed)) { this.state = 'EATING'; game.money -= 10; game.addEffect(this.x, this.y, 'text', "#e84118", "-$10 饭钱"); }
+                        break;
+                    case 'EATING':
+                        this.emoji = '🍔'; this.hunger += 0.4;
+                        if (this.hunger >= 100) { this.hunger = 100; this.state = 'IDLE'; }
+                        break;
+                    case 'GOING_SLEEP':
+                        this.emoji = '🥱';
+                        if (this.moveTo(speed)) this.state = 'SLEEPING';
+                        break;
+                    case 'SLEEPING':
+                        this.emoji = '💤'; this.energy += 0.3;
+                        if (this.energy >= 100) { this.energy = 100; this.state = 'IDLE'; }
+                        break;
+
+                    case 'IDLE':
+                        this.emoji = '👤'; break;
+
+                    // == 通用提取物资逻辑 (去仓库拿材料) ==
+                    case 'GOTO_PICKUP':
+                        this.emoji = '🚶';
+                        if (this.moveTo(speed)) {
+                            let roleDef = ROLES[this.role];
+                            if (roleDef.special === 'sales') {
+                                // 售货员拿最贵的东西
+                                let best = Object.keys(RES).reverse().find(k => this.targetBld.inv[k] > 0);
+                                if (best) {
+                                    let amt = game.tech.cap ? 2 : 1;
+                                    amt = Math.min(amt, this.targetBld.inv[best]);
+                                    this.targetBld.inv[best] -= amt;
+                                    for(let i=0;i<amt;i++) this.carrying.push(best);
+                                    this.setTarget(this.destBld); this.state = 'GOTO_DROPOFF';
+                                } else this.state = 'IDLE';
+                            } else {
+                                // 制造业拿配方材料
+                                let canCraft = true;
+                                for (let req of roleDef.in) { if (this.targetBld.inv[req] <= 0) canCraft = false; }
+                                if (canCraft) {
+                                    for (let req of roleDef.in) { this.targetBld.inv[req]--; this.carrying.push(req); }
+                                    this.setTarget(this.destBld); this.state = 'GOTO_WORK';
+                                } else this.state = 'IDLE'; // 材料被人抢了
+                            }
+                        }
+                        break;
+
+                    // == 去工厂 ==
+                    case 'GOTO_WORK':
+                        this.emoji = '📦'; // 抱着材料箱
+                        if (this.moveTo(speed)) {
+                            this.carrying =[]; // 扔进工厂
+                            this.state = 'WORKING';
+                            this.targetBld.workersInside++; // 触发冒烟
+                        }
+                        break;
+
+                    // == 干活/采集 ==
+                    case 'GOTO_NODE':
+                        this.emoji = ROLES[this.role].icon;
+                        if (this.moveTo(speed)) { this.state = 'WORKING'; this.targetBld.workersInside++; }
+                        break;
+
+                    case 'WORKING':
+                        this.emoji = ROLES[this.role].icon;
+                        this.timer++;
+                        let reqTime = ROLES[this.role].time;
+                        ctx.fillStyle = '#fbc531'; ctx.fillRect(this.x-10, this.y-15, 20*(this.timer/reqTime), 4);
+                        
+                        if (this.timer > reqTime) {
+                            this.timer = 0;
+                            this.targetBld.workersInside--;
+                            
+                            let roleDef = ROLES[this.role];
+                            // 如果是采集节点，扣除资源点容量
+                            if (!roleDef.in) {
+                                this.targetBld.capacity--;
+                                if (this.targetBld.capacity <= 0) {
+                                    this.targetBld.isDestroyed = true;
+                                    // 自动重建科技
+                                    if(game.tech.auto && game.money >= BLD_DATA[this.targetBld.type].cost) {
+                                        game.money -= BLD_DATA[this.targetBld.type].cost;
+                                        game.buildings.push(new Building(this.targetBld.type, this.targetBld.x, this.targetBld.y));
+                                        game.addEffect(this.targetBld.x+50, this.targetBld.y, 'text', '#4cd137', "自动重建");
+                                    }
+                                }
+                            }
+                            
+                            // 产出
+                            let amt = (!roleDef.in && game.tech.cap) ? 2 : 1; // 采集享受载量翻倍
+                            for(let i=0;i<amt;i++) this.carrying.push(roleDef.out);
+                            
+                            this.setTarget(this.destBld);
+                            this.state = 'GOTO_DROPOFF';
+                        }
+                        break;
+
+                    // == 放回仓库 ==
+                    case 'GOTO_DROPOFF':
+                        this.emoji = this.carrying.length > 0 ? RES[this.carrying[0]].emoji : '📦';
+                        if (this.moveTo(speed)) {
+                            for (let item of this.carrying) this.targetBld.inv[item]++;
+                            this.carrying =[];
+                            this.state = 'IDLE'; // 闭环
+                        }
+                        break;
+                }
+            }
+
+            assignTask() {
+                if (this.role === 'IDLE') return;
+                let roleDef = ROLES[this.role];
+
+                if (!roleDef.in && roleDef.special !== 'sales') {
+                    // 采集系 (伐木/挖矿)
+                    let node = game.buildings.find(b => b.type === roleDef.reqBld && !b.isDestroyed);
+                    let wh = game.findNearest(this.x, this.y, 'WAREHOUSE');
+                    if (node && wh) { this.setTarget(node); this.destBld = wh; this.state = 'GOTO_NODE'; }
+                } 
+                else if (roleDef.in) {
+                    // 制造系 (需先去仓库拿材料)
+                    let wh_in = game.buildings.find(b => b.type === 'WAREHOUSE' && roleDef.in.every(req => b.inv[req] > 0));
+                    let factory = game.findNearest(this.x, this.y, roleDef.reqBld);
+                    let wh_out = game.findNearest(this.x, this.y, 'WAREHOUSE');
+                    if (wh_in && factory && wh_out) {
+                        this.setTarget(wh_in); this.destBld = factory; this.midBld = wh_out;
+                        this.state = 'GOTO_PICKUP';
+                        // 技巧：借用 destBld 去工厂，然后在 WORKING 完后，把 destBld 设回 midBld 去丢弃
+                        let origTarget = factory;
+                        let origDest = wh_out;
+                        this.destBld = factory; 
+                        // 改写状态机里的丢弃点传递：
+                        this.destBld = origTarget; 
+                        // 为了在WORKING后能找到回去的路，动态挂载属性：
+                        this.destBld = factory;
+                        this.returnBld = wh_out; // 专用回去的路
+                    }
+                }
+                else if (roleDef.special === 'sales') {
+                    // 售货员
+                    let truck = game.findNearest(this.x, this.y, 'TRUCK');
+                    if (!truck) return;
+                    // 找装了东西的仓库
+                    let wh = game.buildings.find(b => b.type === 'WAREHOUSE' && Object.values(b.inv).some(v => v > 0));
+                    if (wh) { this.setTarget(wh); this.destBld = truck; this.state = 'GOTO_PICKUP'; }
+                }
+
+                // 补充修正制造业的返回路径（因为上面为了简写破坏了结构）
+                if (this.state === 'GOTO_PICKUP' && roleDef.in) {
+                    this.destBld = game.findNearest(this.x, this.y, roleDef.reqBld);
+                    this.destBldForDrop = game.findNearest(this.x, this.y, 'WAREHOUSE');
+                }
+            }
+            
+            // 重写 MANUFACTURING 返回
+            executeState_override(speed) {
+                // ... state machine logic above already handled it by using this.destBld hack. Let's fix clean.
+            }
+        }
+        // 修正状态机的返回路径
+        const originalWorking = Worker.prototype.executeState;
+        Worker.prototype.executeState = function(speed) {
+            if (this.state === 'WORKING' && this.timer + 1 > ROLES[this.role].time) {
+                this.destBld = this.destBldForDrop || this.destBld; // 切换回仓库
+            }
+            originalWorking.call(this, speed);
+        };
+
+        // === 游戏主控 ===
+        const game = {
+            money: 1000,
+            buildings: [], workers: [], effects:[],
+            tech: { speed: false, cap: false, auto: false },
+            rolesMax: {},
+            
+            buildMode: false, buildType: null,
+            mouseX: 0, mouseY: 0,
+            lastSave: Date.now(),
+            paydayTimer: 3600, // 60秒 = 3600帧
+
+            init() {
+                for(let k in ROLES) this.rolesMax[k] = 0;
+                this.buildings.push(new Building('FOREST', 50, 50));
+                this.buildings.push(new Building('DORM', 800, 650));
+                this.buildings.push(new Building('WAREHOUSE', 300, 50));
+                for(let i=0; i<3; i++) this.workers.push(new Worker(850, 700));
+
+                canvas.addEventListener('mousemove', e => { let r = canvas.getBoundingClientRect(); this.mouseX = e.clientX - r.left; this.mouseY = e.clientY - r.top; });
+                canvas.addEventListener('click', () => { if (this.buildMode) this.tryPlace(); else this.clickTruck(); });
+
+                this.renderRoleUI();
+                this.loop();
+            },
+
+            addEffect(x, y, type, color, txt="") { this.effects.push(new Effect(x, y, type, color, txt)); },
+            showMsg(txt) { msgBox.innerText = txt; },
+
+            clickTruck() {
+                for (let b of this.buildings) {
+                    if (b.type === 'TRUCK' && this.mouseX >= b.x && this.mouseX <= b.x+b.w && this.mouseY >= b.y && this.mouseY <= b.y+b.h) {
+                        let profit = 0;
+                        for(let k in b.inv) { profit += b.inv[k] * RES[k].price; b.inv[k] = 0; }
+                        if (profit > 0) {
+                            this.money += profit;
+                            this.addEffect(this.mouseX, this.mouseY, 'text', '#4cd137', "+$" + profit);
+                            this.showMsg(`成功出售！获得资金 $${profit}`);
+                        } else this.showMsg("货车是空的！需要安排【售货员】搬货！");
+                    }
+                }
+            },
+
+            hireWorker() {
+                let max = this.buildings.filter(b => b.type === 'DORM').length * 4;
+                if (this.workers.length >= max) { this.showMsg("宿舍床位已满！建新宿舍。"); return; }
+                if (this.money >= 200) {
+                    this.money -= 200;
+                    let d = this.buildings.find(b => b.type === 'DORM');
+                    this.workers.push(new Worker(d?d.x+50:500, d?d.y+50:400));
+                    this.showMsg("新黑奴...哦不，新员工入职！");
+                } else this.showMsg("公司账上没钱了！");
+            },
+
+            renderRoleUI() {
+                let html = '';
+                for(let k in ROLES) {
+                    html += `<div class="role-row">
+                        <span>${ROLES[k].icon} ${ROLES[k].name}</span>
+                        <div><button onclick="game.adjRole('${k}', -1)">-</button> <span id="role-${k}" style="font-weight:bold;margin:0 5px;color:#fbc531;">${this.rolesMax[k]}</span> <button onclick="game.adjRole('${k}', 1)">+</button></div>
+                    </div>`;
+                }
+                document.getElementById('role-container').innerHTML = html;
+            },
+
+            adjRole(role, delta) {
+                if (delta > 0) {
+                    let idle = this.workers.find(w => w.role === 'IDLE');
+                    if (idle) { this.rolesMax[role]++; idle.role = role; }
+                    else this.showMsg("没有闲置员工！");
+                } else if (delta < 0 && this.rolesMax[role] > 0) {
+                    this.rolesMax[role]--;
+                    let w = this.workers.find(w => w.role === role);
+                    w.role = 'IDLE'; w.state = 'IDLE'; w.targetBld = null; w.carrying =[];
+                }
+                document.getElementById('role-'+role).innerText = this.rolesMax[role];
+            },
+
+            buyTech(id) {
+                if(this.tech[id]) return;
+                let costs = {speed:1500, cap:4000, auto:8000};
+                if (this.money >= costs[id]) {
+                    this.money -= costs[id]; this.tech[id] = true;
+                    document.getElementById('tech-' + id).disabled = true;
+                    document.getElementById('tech-' + id).innerText += " (已研发)";
+                    this.showMsg("科技研发成功！");
+                } else this.showMsg("研发资金不足！");
+            },
+            
+            buyWin() {
+                if(this.money >= 200000) {
+                    this.money -= 200000;
+                    alert("🎉 恭喜！你成功建立了跨国垄断总部！资本家流下了感动的泪水。游戏通关，但你可以继续经营。");
+                } else this.showMsg("距离垄断全球还差得远呢！需要 $200,000");
+            },
+
+            enterBuildMode(type) { this.buildMode = true; this.buildType = type; this.showMsg(`请在地图点击放置 ${BLD_DATA[type].name}`); },
+            cancelBuild() { this.buildMode = false; this.buildType = null; this.showMsg("取消操作。"); },
+
+            tryPlace() {
+                let d = BLD_DATA[this.buildType];
+                if (this.money < d.cost) { this.showMsg("资金不足！"); this.cancelBuild(); return; }
+                let overlap = this.buildings.some(b => !(this.mouseX + d.w < b.x || this.mouseX > b.x + b.w || this.mouseY + d.h < b.y || this.mouseY > b.y + b.h));
+                if (overlap) { this.showMsg("此处已被占用！"); return; }
+
+                this.money -= d.cost;
+                this.buildings.push(new Building(this.buildType, this.mouseX, this.mouseY));
+                this.addEffect(this.mouseX, this.mouseY, 'text', '#e84118', "-$" + d.cost);
+                this.showMsg(`建成：${d.name}`);
+                if (!['FOREST', 'QUARRY'].includes(this.buildType)) this.cancelBuild(); 
+            },
+
+            findNearest(x, y, type) {
+                let ts = this.buildings.filter(b => b.type === type && !b.isDestroyed);
+                if (ts.length === 0) return null;
+                return ts.reduce((c, b) => Math.hypot(b.x-x, b.y-y) < Math.hypot(c.x-x, c.y-y) ? b : c);
+            },
+
+            updateUI() {
+                document.getElementById('ui-money').innerText = "$" + this.money;
+                document.getElementById('ui-payday').innerText = Math.ceil(this.paydayTimer/60) + "s";
+                let max = this.buildings.filter(b => b.type === 'DORM').length * 4;
+                let idle = this.workers.filter(w=>w.role==='IDLE').length;
+                document.getElementById('ui-workers').innerText = `${idle}/${this.workers.length}/${max}`;
+                document.getElementById('btn-hire').disabled = (this.workers.length >= max);
+            },
+            
+            triggerPayday() {
+                let wage = this.workers.length * 20;
+                if (this.money >= wage) {
+                    this.money -= wage;
+                    this.workers.forEach(w => w.isStriking = false);
+                    this.showMsg(`发薪日！支出薪水 $${wage}`);
+                } else {
+                    this.money = 0;
+                    this.workers.forEach(w => w.isStriking = true);
+                    this.showMsg(`🚨 破产危机！发不出工资，全员罢工！请手动点击货车卖货回血。`);
+                }
+            },
+
+            saveGame() {
+                let data = { money: this.money, tech: this.tech, blds: this.buildings, workers: this.workers.length, roles: this.rolesMax };
+                localStorage.setItem('tycoon_save', JSON.stringify(data));
+                this.showMsg("存档成功！");
+            },
+            loadGame() {
+                let s = localStorage.getItem('tycoon_save');
+                if (s) {
+                    let d = JSON.parse(s);
+                    this.money = d.money; this.tech = d.tech; this.rolesMax = d.roles;
+                    this.buildings = d.blds.map(b => { let nb=new Building(b.type,b.x,b.y); nb.inv=b.inv; nb.capacity=b.capacity; return nb; });
+                    this.workers=[]; let dm = this.buildings.find(b=>b.type==='DORM');
+                    for(let i=0;i<d.workers;i++) this.workers.push(new Worker(dm?dm.x:500, dm?dm.y:500));
+                    let p=[...this.workers]; for(let r in this.rolesMax){ for(let i=0;i<this.rolesMax[r];i++) if(p.length) p.pop().role = r; }
+                    for(let k in this.tech) if(this.tech[k]) document.getElementById('tech-'+k).disabled=true;
+                    this.renderRoleUI(); this.showMsg("读档成功！");
+                }
+            },
+            resetGame() { localStorage.removeItem('tycoon_save'); location.reload(); },
+
+            // 背景草地网格缓存 (优化性能)
+            drawBG() {
+                if(!this.bgCanvas) {
+                    this.bgCanvas = document.createElement('canvas'); this.bgCanvas.width=1000; this.bgCanvas.height=800;
+                    let bctx = this.bgCanvas.getContext('2d'); bctx.fillStyle='#4cd137'; bctx.fillRect(0,0,1000,800);
+                    bctx.fillStyle='rgba(0,0,0,0.05)';
+                    for(let i=0;i<1000;i+=40){ bctx.fillRect(i,0,1,800); bctx.fillRect(0,i,1000,1); }
+                }
+                ctx.drawImage(this.bgCanvas,0,0);
+            },
+
+            loop() {
+                this.drawBG();
+                this.buildings = this.buildings.filter(b => !b.isDestroyed);
+                
+                // 排序绘制产生遮挡效果
+                this.buildings.sort((a,b) => a.y - b.y);
+                for (let b of this.buildings) b.draw(ctx);
+
+                this.workers.sort((a,b) => a.y - b.y);
+                for (let w of this.workers) { w.update(); w.draw(ctx); }
+
+                for (let i = this.effects.length-1; i>=0; i--) {
+                    let ef = this.effects[i]; ef.update(); ef.draw(ctx);
+                    if (ef.life <= 0) this.effects.splice(i, 1);
+                }
+
+                if (this.buildMode) {
+                    ctx.fillStyle = 'rgba(76, 209, 55, 0.6)';
+                    ctx.fillRect(this.mouseX, this.mouseY, BLD_DATA[this.buildType].w, BLD_DATA[this.buildType].h);
+                }
+
+                this.paydayTimer--;
+                if(this.paydayTimer <= 0) { this.triggerPayday(); this.paydayTimer = 3600; }
+
+                this.updateUI();
+                if (Date.now() - this.lastSave > 30000) { this.saveGame(); this.lastSave = Date.now(); }
+                requestAnimationFrame(() => this.loop());
+            }
+        };
+
+        game.init();
+    </script>
+</body>
+</html>
